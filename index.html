@@ -2,14 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>bяeakout</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>vibecode · breakout (touch)</title>
   <style>
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
       user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none; /* critical: stops browser scroll/zoom on drag */
     }
 
     body {
@@ -19,52 +22,61 @@
       justify-content: center;
       align-items: center;
       font-family: 'Segoe UI', system-ui, monospace;
+      overflow: hidden;
     }
 
     .game-wrapper {
       background: #131a2c;
-      padding: 1.5rem 2rem 2rem 2rem;
-      border-radius: 3rem 3rem 2.5rem 2.5rem;
+      padding: 1rem;
+      border-radius: 2rem;
       box-shadow: 0 20px 30px -8px rgba(0, 0, 0, 0.8), inset 0 0 0 1px #2e3b5e;
+      max-width: 100vw;
+      max-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
     }
 
     canvas {
       display: block;
-      width: 800px;
-      height: 500px;
-      border-radius: 1.8rem;
+      width: 100%;
+      height: auto;
+      max-width: 800px;
+      max-height: 70vh;
+      aspect-ratio: 800 / 500;
+      border-radius: 1.5rem;
       background: #0e1424;
       box-shadow: inset 0 0 40px #00000055, 0 8px 0 #05080f;
-      cursor: none;
+      touch-action: none;
     }
 
     .status-bar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin: 0.8rem 0.5rem 0 0.5rem;
       color: #b9c8ff;
       font-weight: 600;
       letter-spacing: 0.5px;
       text-shadow: 0 2px 3px black;
+      gap: 0.5rem;
     }
 
     .score, .lives {
       background: #1d2742;
-      padding: 0.35rem 1.2rem;
+      padding: 0.25rem 0.9rem;
       border-radius: 30px;
       box-shadow: inset 0 3px 6px #00000060, 0 4px 0 #0b0f1a;
-      font-size: 1.3rem;
+      font-size: 1rem;
       display: flex;
       align-items: center;
-      gap: 0.6rem;
+      gap: 0.4rem;
     }
 
     .score span, .lives span {
       color: #f7f0b9;
-      font-size: 1.6rem;
+      font-size: 1.2rem;
       font-weight: 800;
-      min-width: 2.2rem;
+      min-width: 1.8rem;
       text-align: center;
       text-shadow: 0 0 12px #ffd966;
     }
@@ -74,25 +86,25 @@
       border: none;
       color: #dee9ff;
       font-weight: bold;
-      padding: 0.4rem 1.8rem;
+      padding: 0.4rem 1.2rem;
       border-radius: 40px;
-      font-size: 1.1rem;
+      font-size: 0.95rem;
       letter-spacing: 0.5px;
-      box-shadow: 0 6px 0 #0e121f, 0 8px 10px black;
+      box-shadow: 0 5px 0 #0e121f, 0 6px 8px black;
       cursor: pointer;
       transition: 0.08s ease;
       text-transform: uppercase;
     }
 
     .restart-btn:active {
-      transform: translateY(5px);
-      box-shadow: 0 1px 0 #0e121f, 0 5px 10px black;
+      transform: translateY(4px);
+      box-shadow: 0 1px 0 #0e121f, 0 4px 8px black;
     }
 
     .hint {
       color: #7b8bc0;
-      font-size: 0.9rem;
-      margin-left: 1rem;
+      font-size: 0.8rem;
+      text-align: center;
       font-weight: 400;
       letter-spacing: 0.3px;
     }
@@ -102,11 +114,11 @@
 <div class="game-wrapper">
   <canvas id="gameCanvas" width="800" height="500"></canvas>
   <div class="status-bar">
-    <div class="score">🎯 SCORE <span id="scoreDisplay">0</span></div>
-    <div class="lives">❤️ LIVES <span id="livesDisplay">3</span></div>
-    <button class="restart-btn" id="restartButton">↻ restart</button>
+    <div class="score">🎯 <span id="scoreDisplay">0</span></div>
+    <div class="lives">❤️ <span id="livesDisplay">3</span></div>
+    <button class="restart-btn" id="restartButton">↻</button>
   </div>
-  <div class="hint">← → move · SPACE launch · click restart</div>
+  <div class="hint">drag to move · tap to launch · ⌨️ ← → / space</div>
 </div>
 
 <script>
@@ -124,7 +136,7 @@
     // ---------- GAME CONSTANTS ----------
     const PADDLE_WIDTH = 120;
     const PADDLE_HEIGHT = 16;
-    const PADDLE_Y = CH - 40;          // 460
+    const PADDLE_Y = CH - 40;
     const PADDLE_SPEED = 8;
 
     const BALL_RADIUS = 8;
@@ -141,29 +153,35 @@
     // ---------- GAME STATE ----------
     let leftPressed = false;
     let rightPressed = false;
-    let spacePressed = false;          // used for launch
 
-    // paddle
     let paddleX = (CW - PADDLE_WIDTH) / 2;
 
-    // ball
     let ballX = CW / 2;
-    let ballY = PADDLE_Y - BALL_RADIUS - 1;   // rest right above paddle
+    let ballY = PADDLE_Y - BALL_RADIUS - 1;
     let ballDX = 0;
     let ballDY = 0;
-    let ballActive = false;            // false = stuck on paddle
+    let ballActive = false;
 
-    // bricks: 2D array [row][col] = 1 (alive) or 0 (destroyed)
     let bricks = [];
 
-    // score & lives
     let score = 0;
     let lives = 3;
 
-    // game flags
-    let gameOver = false;              // no lives left
-    let gameWin = false;              // all bricks cleared
-    let awaitingRestart = false;      // optional, but we auto-reset via restart button
+    let gameOver = false;
+    let gameWin = false;
+
+    // ---------- TOUCH STATE ----------
+    // When the player drags a finger, we target the paddle's center to the touch X.
+    // paddleTargetX == null means no touch input active.
+    let paddleTargetX = null;
+    let touchActive = false;
+    // Track whether this touch was a tap (small movement, short duration) — used to launch.
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let touchMoved = false;
+    const TAP_MAX_DIST = 12;      // px (in canvas coordinates) considered a tap
+    const TAP_MAX_TIME = 250;     // ms
 
     // ---------- INIT / RESET ----------
     function initBricks() {
@@ -171,41 +189,32 @@
       for (let r = 0; r < BRICK_ROWS; r++) {
         bricks[r] = [];
         for (let c = 0; c < BRICK_COLS; c++) {
-          bricks[r][c] = 1;            // all alive
+          bricks[r][c] = 1;
         }
       }
     }
 
     function resetBallAndPaddle() {
-      // paddle centered
       paddleX = (CW - PADDLE_WIDTH) / 2;
-      // ball resting on paddle
       ballX = paddleX + PADDLE_WIDTH / 2;
       ballY = PADDLE_Y - BALL_RADIUS - 1;
       ballDX = 0;
       ballDY = 0;
       ballActive = false;
+      paddleTargetX = null;
+      touchActive = false;
     }
 
     function resetGame() {
-      // reset score & lives
       score = 0;
       lives = 3;
       gameOver = false;
       gameWin = false;
-      awaitingRestart = false;
-
-      // rebuild bricks
       initBricks();
-
-      // reset paddle & ball
       resetBallAndPaddle();
-
-      // update displays
       updateUI();
     }
 
-    // full restart (button / click)
     function fullRestart() {
       resetGame();
     }
@@ -216,40 +225,26 @@
       livesSpan.textContent = lives;
     }
 
-    // ---------- LAUNCH BALL (if inactive and game not over/win) ----------
+    // ---------- LAUNCH BALL ----------
     function launchBall() {
       if (ballActive) return;
-      if (gameOver || gameWin) return;   // don't launch if game finished
+      if (gameOver || gameWin) return;
 
-      // ball must be on paddle
       ballActive = true;
-
-      // random angle (avoid pure horizontal/vertical)
-      const angle = (Math.random() * 0.7 + 0.3) * Math.PI; // 0.3pi to 1.0pi? but we want upward (negative dy)
-      // better: choose angle between 30° and 150° from horizontal, but directed upward
-      const randomAngle = (Math.random() * 0.8 + 0.1) * Math.PI; // 0.1pi .. 0.9pi? then dy negative
-      // simpler: use fixed range: -60° to -120° (or 240° to 300°)
-      // let's do: direction between -70° and -110° (upwards)
-      const rad = (Math.random() * 0.6 + 0.2) * Math.PI; // 0.2pi ~ 36° to 0.8pi ~ 144° but we need upward: dy negative
-      // Actually we want angle measured from positive x axis, with dy negative => angle between 180+?
-      // easier: set dx = cos(angle), dy = -sin(angle) with angle in [0.2pi, 0.8pi]
-      const angleUp = (Math.random() * 0.6 + 0.2) * Math.PI; // 0.2pi to 0.8pi (36° to 144°)
+      const angleUp = (Math.random() * 0.6 + 0.2) * Math.PI;
       ballDX = Math.cos(angleUp) * BALL_SPEED;
       ballDY = -Math.sin(angleUp) * BALL_SPEED;
 
-      // ensure not too horizontal (avoid infinite loops)
       if (Math.abs(ballDY) < 1.8) {
-        // adjust to give more vertical component
         const sign = ballDY > 0 ? 1 : -1;
         ballDY = sign * 2.2;
-        // renormalize speed
         const len = Math.hypot(ballDX, ballDY);
         ballDX = (ballDX / len) * BALL_SPEED;
         ballDY = (ballDY / len) * BALL_SPEED;
       }
     }
 
-    // ---------- COLLISION DETECTION (bricks) ----------
+    // ---------- BRICK COLLISION ----------
     function ballBrickCollision() {
       for (let r = 0; r < BRICK_ROWS; r++) {
         for (let c = 0; c < BRICK_COLS; c++) {
@@ -258,7 +253,6 @@
           const brickX = BRICK_OFFSET_X + c * (BRICK_WIDTH + BRICK_PADDING);
           const brickY = BRICK_OFFSET_Y + r * (BRICK_HEIGHT + BRICK_PADDING);
 
-          // closest point on brick to ball center
           const closestX = Math.max(brickX, Math.min(ballX, brickX + BRICK_WIDTH));
           const closestY = Math.max(brickY, Math.min(ballY, brickY + BRICK_HEIGHT));
 
@@ -267,12 +261,10 @@
           const distSq = dx * dx + dy * dy;
 
           if (distSq < BALL_RADIUS * BALL_RADIUS) {
-            // brick hit!
             bricks[r][c] = 0;
             score += 10;
             updateUI();
 
-            // Determine bounce direction based on overlap
             const overlapLeft   = (ballX + BALL_RADIUS) - brickX;
             const overlapRight  = (brickX + BRICK_WIDTH) - (ballX - BALL_RADIUS);
             const overlapTop    = (ballY + BALL_RADIUS) - brickY;
@@ -281,10 +273,8 @@
             const minOverlapX = Math.min(overlapLeft, overlapRight);
             const minOverlapY = Math.min(overlapTop, overlapBottom);
 
-            // Resolve collision by minimal overlap
             if (minOverlapX < minOverlapY) {
               ballDX = -ballDX;
-              // push ball out to avoid sticking
               if (overlapLeft < overlapRight) {
                 ballX = brickX - BALL_RADIUS - 0.1;
               } else {
@@ -299,49 +289,51 @@
               }
             }
 
-            // check win condition after brick removal
             if (bricks.every(row => row.every(cell => cell === 0))) {
               gameWin = true;
-              ballActive = false;          // freeze ball
+              ballActive = false;
             }
-
-            return; // one collision per frame (handles most cases well)
+            return;
           }
         }
       }
     }
 
-    // ---------- UPDATE GAME (called every frame) ----------
+    // ---------- UPDATE ----------
     function update() {
-      // if game over / win, don't move ball or paddle (except paddle maybe not)
-      if (gameOver || gameWin) {
-        // still allow paddle movement? we can disable, but it's fine – we ignore ball
-        return;
-      }
+      if (gameOver || gameWin) return;
 
       // ----- paddle movement -----
-      if (leftPressed) {
-        paddleX = Math.max(0, paddleX - PADDLE_SPEED);
-      }
-      if (rightPressed) {
-        paddleX = Math.min(CW - PADDLE_WIDTH, paddleX + PADDLE_SPEED);
+      // Priority: touch target if active, otherwise keyboard.
+      if (paddleTargetX !== null) {
+        // paddleTargetX is the desired CENTER of the paddle
+        const desired = paddleTargetX - PADDLE_WIDTH / 2;
+        const clamped = Math.max(0, Math.min(CW - PADDLE_WIDTH, desired));
+        // smooth follow (fast enough to feel responsive, not jittery)
+        const diff = clamped - paddleX;
+        // snap when close for pixel-perfect feel
+        if (Math.abs(diff) < 0.5) {
+          paddleX = clamped;
+        } else {
+          paddleX += diff * 0.45;
+        }
+      } else {
+        if (leftPressed) paddleX = Math.max(0, paddleX - PADDLE_SPEED);
+        if (rightPressed) paddleX = Math.min(CW - PADDLE_WIDTH, paddleX + PADDLE_SPEED);
       }
 
-      // ----- if ball not active, keep it on paddle -----
+      // ----- ball on paddle -----
       if (!ballActive) {
         ballX = paddleX + PADDLE_WIDTH / 2;
         ballY = PADDLE_Y - BALL_RADIUS - 1;
-        // if space pressed, launch (handled in keydown, but we also want to launch on space in update? better keydown)
-        // we handle in keydown event.
-        return; // no further ball movement
+        return;
       }
 
-      // ----- ball movement (active) -----
+      // ----- ball movement -----
       ballX += ballDX;
       ballY += ballDY;
 
-      // ----- wall collisions -----
-      // left/right
+      // walls
       if (ballX - BALL_RADIUS < 0) {
         ballX = BALL_RADIUS;
         ballDX = -ballDX;
@@ -349,77 +341,56 @@
         ballX = CW - BALL_RADIUS;
         ballDX = -ballDX;
       }
-
-      // top
       if (ballY - BALL_RADIUS < 0) {
         ballY = BALL_RADIUS;
         ballDY = -ballDY;
       }
 
-      // ----- paddle collision (only if moving downward) -----
+      // paddle
       if (ballDY > 0 &&
           ballY + BALL_RADIUS >= PADDLE_Y &&
           ballY - BALL_RADIUS <= PADDLE_Y + PADDLE_HEIGHT &&
           ballX + BALL_RADIUS >= paddleX &&
           ballX - BALL_RADIUS <= paddleX + PADDLE_WIDTH) {
 
-        // reflect
         ballDY = -ballDY;
-
-        // add spin based on where it hit the paddle
-        const hitPos = (ballX - paddleX) / PADDLE_WIDTH; // 0..1
-        const angle = (hitPos - 0.5) * 1.6;              // -0.8..0.8 rad
+        const hitPos = (ballX - paddleX) / PADDLE_WIDTH;
+        const angle = (hitPos - 0.5) * 1.6;
         const speed = Math.hypot(ballDX, ballDY);
-        // new direction: preserve vertical speed sign (now negative)
-        // convert to angle relative to vertical? easier: adjust dx and dy with normalized speed.
-        const newDY = -Math.abs(Math.cos(angle)) * speed;
-        const newDX = Math.sin(angle) * speed;
-        ballDX = newDX;
-        ballDY = newDY;
-
-        // push ball above paddle to avoid sticky collision
+        ballDX = Math.sin(angle) * speed;
+        ballDY = -Math.abs(Math.cos(angle)) * speed;
         ballY = PADDLE_Y - BALL_RADIUS - 0.5;
       }
 
-      // ----- brick collisions -----
       ballBrickCollision();
 
-      // ----- bottom: ball lost? -----
+      // bottom — lose life
       if (ballY - BALL_RADIUS > CH) {
-        // lose a life
         lives--;
         updateUI();
-
         if (lives <= 0) {
           gameOver = true;
           ballActive = false;
-          // ball remains? we can leave it invisible, but we set active false
-          // reset ball to paddle for display but gameOver stops movement
           ballX = paddleX + PADDLE_WIDTH / 2;
           ballY = PADDLE_Y - BALL_RADIUS - 1;
           ballDX = 0;
           ballDY = 0;
         } else {
-          // reset ball & paddle position (but keep bricks)
           resetBallAndPaddle();
         }
       }
-
-      // (win condition already set inside ballBrickCollision, but if gameWin becomes true,
-      //  we still stop ball on next update. fine)
     }
 
-    // ---------- DRAWING ----------
+    // ---------- DRAW ----------
     function draw() {
       ctx.clearRect(0, 0, CW, CH);
 
-      // ---- background ----
       const grad = ctx.createLinearGradient(0, 0, 0, CH);
       grad.addColorStop(0, '#0a1020');
       grad.addColorStop(1, '#141e30');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, CW, CH);
-      // subtle grid dots
+
       ctx.fillStyle = '#ffffff08';
       for (let i = 0; i < CW; i += 40) {
         for (let j = 0; j < CH; j += 40) {
@@ -429,15 +400,12 @@
         }
       }
 
-      // ---- bricks ----
+      // bricks
       for (let r = 0; r < BRICK_ROWS; r++) {
         for (let c = 0; c < BRICK_COLS; c++) {
           if (bricks[r][c] === 0) continue;
-
           const brickX = BRICK_OFFSET_X + c * (BRICK_WIDTH + BRICK_PADDING);
           const brickY = BRICK_OFFSET_Y + r * (BRICK_HEIGHT + BRICK_PADDING);
-
-          // color by row
           const hue = (r * 20 + 180) % 360;
           ctx.fillStyle = `hsl(${hue}, 70%, 60%)`;
           ctx.shadowColor = `hsl(${hue}, 80%, 60%)`;
@@ -445,8 +413,6 @@
           ctx.beginPath();
           ctx.roundRect(brickX, brickY, BRICK_WIDTH, BRICK_HEIGHT, 6);
           ctx.fill();
-
-          // inner shine
           ctx.shadowBlur = 0;
           ctx.fillStyle = `hsl(${hue}, 90%, 85%)`;
           ctx.beginPath();
@@ -454,32 +420,29 @@
           ctx.fill();
         }
       }
-      // reset shadow
       ctx.shadowBlur = 0;
       ctx.shadowColor = 'transparent';
 
-      // ---- paddle ----
+      // paddle
       ctx.shadowColor = '#b0c8ff';
       ctx.shadowBlur = 16;
       ctx.fillStyle = '#b7d0ff';
       ctx.beginPath();
       ctx.roundRect(paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, 12);
       ctx.fill();
-      // paddle highlight
       ctx.shadowBlur = 0;
       ctx.fillStyle = '#e4eeff';
       ctx.beginPath();
       ctx.roundRect(paddleX + 4, PADDLE_Y + 2, PADDLE_WIDTH - 8, 6, 6);
       ctx.fill();
 
-      // ---- ball ----
+      // ball
       ctx.shadowColor = '#fff9c4';
       ctx.shadowBlur = 24;
       ctx.fillStyle = '#fff9e6';
       ctx.beginPath();
       ctx.arc(ballX, ballY, BALL_RADIUS, 0, Math.PI * 2);
       ctx.fill();
-      // ball inner glow
       ctx.shadowBlur = 12;
       ctx.fillStyle = '#ffe066';
       ctx.beginPath();
@@ -487,45 +450,40 @@
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // ---- game messages overlays ----
+      // messages
+      ctx.textAlign = 'center';
       if (gameOver) {
         ctx.font = 'bold 44px "Segoe UI", monospace';
         ctx.fillStyle = '#ffb3b3';
         ctx.shadowColor = '#aa0000';
         ctx.shadowBlur = 24;
-        ctx.textAlign = 'center';
         ctx.fillText('GAME OVER', CW / 2, CH / 2 - 20);
-        ctx.font = '24px monospace';
+        ctx.font = '22px monospace';
         ctx.fillStyle = '#ffdddd';
-        ctx.fillText('click restart', CW / 2, CH / 2 + 50);
+        ctx.fillText('tap or press R to restart', CW / 2, CH / 2 + 50);
         ctx.shadowBlur = 0;
       } else if (gameWin) {
         ctx.font = 'bold 48px "Segoe UI", monospace';
         ctx.fillStyle = '#f5e56b';
         ctx.shadowColor = '#b8860b';
         ctx.shadowBlur = 28;
-        ctx.textAlign = 'center';
         ctx.fillText('✨ YOU WIN ✨', CW / 2, CH / 2 - 20);
-        ctx.font = '24px monospace';
+        ctx.font = '22px monospace';
         ctx.fillStyle = '#ffffcf';
-        ctx.fillText('click restart', CW / 2, CH / 2 + 50);
+        ctx.fillText('tap or press R to restart', CW / 2, CH / 2 + 50);
         ctx.shadowBlur = 0;
       } else if (!ballActive && !gameOver && !gameWin) {
-        // show "press space" hint
         ctx.font = 'bold 22px "Segoe UI", monospace';
         ctx.fillStyle = '#b9d0ff';
         ctx.shadowColor = '#3a5f9e';
         ctx.shadowBlur = 12;
-        ctx.textAlign = 'center';
-        ctx.fillText('press SPACE to launch', CW / 2, CH - 100);
+        ctx.fillText('tap or press SPACE to launch', CW / 2, CH - 100);
         ctx.shadowBlur = 0;
       }
-
-      // reset alignment
       ctx.textAlign = 'left';
     }
 
-    // ---------- ROUND RECT HELPER (polyfill) ----------
+    // ---------- ROUND RECT POLYFILL ----------
     if (!CanvasRenderingContext2D.prototype.roundRect) {
       CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
@@ -551,21 +509,106 @@
       requestAnimationFrame(gameLoop);
     }
 
-    // ---------- EVENT LISTENERS ----------
+    // ---------- COORDINATE HELPERS ----------
+    // Convert a screen (client) coordinate to canvas game coordinate.
+    // Accounts for CSS scaling of the canvas element.
+    function clientToCanvas(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = CW / rect.width;
+      const scaleY = CH / rect.height;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
+    }
+
+    // ---------- TOUCH HANDLERS ----------
+    function onTouchStart(e) {
+      // Only handle the first touch for paddle control; ignore additional fingers.
+      if (e.touches.length > 1) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      const pt = clientToCanvas(touch.clientX, touch.clientY);
+
+      touchActive = true;
+      paddleTargetX = pt.x;
+
+      touchStartX = pt.x;
+      touchStartY = pt.y;
+      touchStartTime = performance.now();
+      touchMoved = false;
+    }
+
+    function onTouchMove(e) {
+      if (!touchActive) return;
+      if (e.touches.length > 1) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      const pt = clientToCanvas(touch.clientX, touch.clientY);
+
+      // Did the finger move beyond tap threshold?
+      const dx = pt.x - touchStartX;
+      const dy = pt.y - touchStartY;
+      if (dx * dx + dy * dy > TAP_MAX_DIST * TAP_MAX_DIST) {
+        touchMoved = true;
+      }
+
+      paddleTargetX = pt.x;
+    }
+
+    function onTouchEnd(e) {
+      if (!touchActive) return;
+      // If there are still touches down, ignore (multi-touch case).
+      if (e.touches.length > 0) return;
+      e.preventDefault();
+
+      const duration = performance.now() - touchStartTime;
+      const wasTap = !touchMoved && duration < TAP_MAX_TIME;
+
+      // Release touch control so keyboard still works.
+      touchActive = false;
+      paddleTargetX = null;
+
+      if (wasTap) {
+        // Tap = launch, OR restart if game ended.
+        if (gameOver || gameWin) {
+          fullRestart();
+        } else if (!ballActive) {
+          launchBall();
+        }
+      }
+    }
+
+    function onTouchCancel(e) {
+      touchActive = false;
+      paddleTargetX = null;
+      touchMoved = false;
+    }
+
+    // ---------- KEYBOARD HANDLERS (unchanged, still supported) ----------
     function handleKeyDown(e) {
       const key = e.key;
       if (key === 'ArrowLeft' || key === 'Left' || key === 'a' || key === 'A') {
         leftPressed = true;
+        // keyboard overrides touch targeting
+        paddleTargetX = null;
+        touchActive = false;
         e.preventDefault();
       } else if (key === 'ArrowRight' || key === 'Right' || key === 'd' || key === 'D') {
         rightPressed = true;
+        paddleTargetX = null;
+        touchActive = false;
         e.preventDefault();
       } else if (key === ' ') {
-        // space: launch if possible
         if (!ballActive && !gameOver && !gameWin) {
           launchBall();
         }
-        e.preventDefault();  // prevent page scroll
+        e.preventDefault();
+      } else if (key === 'r' || key === 'R') {
+        fullRestart();
+        e.preventDefault();
       }
     }
 
@@ -582,36 +625,60 @@
       }
     }
 
-    // prevent window scrolling with arrows/space
     window.addEventListener('keydown', function(e) {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Space') {
         e.preventDefault();
       }
-    }, false);
+    }, { passive: false });
 
-    // attach main handlers
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
 
-    // restart button
+    // ---------- ATTACH TOUCH LISTENERS ----------
+    // { passive: false } is REQUIRED so e.preventDefault() works (stops scroll/zoom).
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onTouchCancel, { passive: false });
+
+    // Also support mouse drag on desktop for testing (optional, harmless).
+    let mouseDown = false;
+    canvas.addEventListener('mousedown', (e) => {
+      mouseDown = true;
+      const rect = canvas.getBoundingClientRect();
+      const pt = clientToCanvas(e.clientX, e.clientY);
+      touchActive = true;
+      paddleTargetX = pt.x;
+      touchStartX = pt.x;
+      touchStartY = pt.y;
+      touchStartTime = performance.now();
+      touchMoved = false;
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!mouseDown) return;
+      const pt = clientToCanvas(e.clientX, e.clientY);
+      if (Math.hypot(pt.x - touchStartX, pt.y - touchStartY) > TAP_MAX_DIST) {
+        touchMoved = true;
+      }
+      paddleTargetX = pt.x;
+    });
+    window.addEventListener('mouseup', () => {
+      if (!mouseDown) return;
+      mouseDown = false;
+      const duration = performance.now() - touchStartTime;
+      const wasTap = !touchMoved && duration < TAP_MAX_TIME;
+      touchActive = false;
+      paddleTargetX = null;
+      if (wasTap) {
+        if (gameOver || gameWin) fullRestart();
+        else if (!ballActive) launchBall();
+      }
+    });
+
+    // ---------- RESTART BUTTON ----------
     document.getElementById('restartButton').addEventListener('click', fullRestart);
 
-    // optional: click on canvas also restarts if game over/win
-    canvas.addEventListener('click', () => {
-      if (gameOver || gameWin) {
-        fullRestart();
-      }
-    });
-
-    // also restart with 'r' key for convenience
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'r' || e.key === 'R') {
-        fullRestart();
-        e.preventDefault();
-      }
-    });
-
-    // ---------- START THE GAME ----------
+    // ---------- START ----------
     initBricks();
     resetBallAndPaddle();
     updateUI();
