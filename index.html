@@ -136,117 +136,44 @@
     const BALL_SPEED = 5.5;
 
     const BRICK_COLS = 10;
-    const BRICK_ROWS = 8;              // bumped up so patterns have room
+    const BRICK_ROWS = 8;
     const BRICK_WIDTH = 68;
     const BRICK_HEIGHT = 22;
     const BRICK_PADDING = 6;
     const BRICK_OFFSET_X = (CW - (BRICK_COLS * (BRICK_WIDTH + BRICK_PADDING) - BRICK_PADDING)) / 2;
     const BRICK_OFFSET_Y = 50;
 
-    // ---------- LEVEL DEFINITIONS ----------
-    // Each level is an array of strings, one per row.
-    // '#' = brick, '.' = empty. Rows are top-to-bottom.
-    // Patterns are 10 wide. Height can be < BRICK_ROWS (extra rows are empty).
+    // ---------- POWER-UP CONFIG ----------
+    const POWERUP_CHANCE = 0.18;         // 18% of destroyed bricks drop something
+    const POWERUP_FALL_SPEED = 2.4;
+    const POWERUP_SIZE = 26;
+    const POWERUP_DURATION = 480;        // frames (~8s at 60fps) for timed effects
+    const MULTIBALL_SPEED = BALL_SPEED;  // speed of spawned extra balls
+    const PADDLE_WIDE_EXTRA = 70;
+    const PADDLE_NARROW_LOSS = 50;
+
+    // Power-up types (color, letter, name)
+    const POWERUP_TYPES = [
+      { id: 'expand',  color: '#4ade80', letter: 'E', label: 'WIDE'     },
+      { id: 'shrink',  color: '#f87171', letter: 'S', label: 'NARROW'   },
+      { id: 'multi',   color: '#60a5fa', letter: 'M', label: 'MULTI'    },
+      { id: 'slow',    color: '#a78bfa', letter: '⏱', label: 'SLOW'     },
+      { id: 'extra',   color: '#fbbf24', letter: '❤', label: 'EXTRA LIFE' },
+      { id: 'sticky',  color: '#f472b6', letter: '⊂', label: 'STICKY'   }
+    ];
+
+    // ---------- LEVELS ----------
     const LEVELS = [
-      // Level 1 — classic full wall
-      [
-        "##########",
-        "##########",
-        "##########",
-        "##########",
-        "##########"
-      ],
-      // Level 2 — pyramid
-      [
-        "....##....",
-        "...####...",
-        "..######..",
-        ".########.",
-        "##########"
-      ],
-      // Level 3 — checkerboard
-      [
-        "#.#.#.#.#.",
-        ".#.#.#.#.#",
-        "#.#.#.#.#.",
-        ".#.#.#.#.#",
-        "#.#.#.#.#."
-      ],
-      // Level 4 — diamond
-      [
-        "....##....",
-        "...####...",
-        "..######..",
-        ".########.",
-        "##########",
-        ".########.",
-        "..######..",
-        "...####..."
-      ],
-      // Level 5 — two towers with bridge
-      [
-        "###....###",
-        "###....###",
-        "###....###",
-        "##########",
-        "###....###",
-        "###....###",
-        "###....###"
-      ],
-      // Level 6 — arrow pointing up
-      [
-        "....##....",
-        "...####...",
-        "..######..",
-        ".########.",
-        "##########",
-        "....##....",
-        "....##....",
-        "....##...."
-      ],
-      // Level 7 — heart
-      [
-        ".###..###.",
-        "##########",
-        "##########",
-        "##########",
-        ".########.",
-        "..######..",
-        "...####...",
-        "....##...."
-      ],
-      // Level 8 — zigzag / stairs
-      [
-        "##........",
-        ".###......",
-        "..#####...",
-        "...#######",
-        "....######",
-        "...#######",
-        "..#####...",
-        ".###......"
-      ],
-      // Level 9 — columns (space invaders-ish)
-      [
-        "#.#.#.#.#.",
-        "#.#.#.#.#.",
-        "#.#.#.#.#.",
-        "#.#.#.#.#.",
-        "#.#.#.#.#.",
-        ".#.#.#.#.#",
-        "..#.#.#.#."
-      ],
-      // Level 10 — hollow box
-      [
-        "##########",
-        "#........#",
-        "#........#",
-        "#........#",
-        "#........#",
-        "#........#",
-        "#........#",
-        "##########"
-      ]
+      ["##########","##########","##########","##########","##########"],
+      ["....##....","...####...","..######..",".########.","##########"],
+      ["#.#.#.#.#.",".#.#.#.#.#","#.#.#.#.#.",".#.#.#.#.#","#.#.#.#.#."],
+      ["....##....","...####...","..######..",".########.","##########",".########.","..######..","...####..."],
+      ["###....###","###....###","###....###","##########","###....###","###....###","###....###"],
+      ["....##....","...####...","..######..",".########.","##########","....##....","....##....","....##...."],
+      [".###..###.","##########","##########","##########",".########.","..######..","...####...","....##...."],
+      ["##........",".###......","..#####...","...#######","....######","...#######","..#####...",".###......"],
+      ["#.#.#.#.#.","#.#.#.#.#.","#.#.#.#.#.","#.#.#.#.#.","#.#.#.#.#.",".#.#.#.#.#","..#.#.#.#."],
+      ["##########","#........#","#........#","#........#","#........#","#........#","#........#","##########"]
     ];
 
     // ---------- GAME STATE ----------
@@ -254,19 +181,38 @@
     let rightPressed = false;
 
     let paddleX = (CW - PADDLE_WIDTH) / 2;
+    let paddleWidth = PADDLE_WIDTH;       // current width (can change via power-ups)
+
     let ballX = CW / 2;
     let ballY = PADDLE_Y - BALL_RADIUS - 1;
     let ballDX = 0;
     let ballDY = 0;
     let ballActive = false;
 
+    // Extra balls (multiball). Each: {x, y, dx, dy}
+    let extraBalls = [];
+
     let bricks = [];
     let score = 0;
     let lives = 3;
-    let levelIndex = 0;                // 0-based, cycles through LEVELS
+    let levelIndex = 0;
     let gameOver = false;
-    let gameWin = false;               // "won the entire game" (all levels)
-    let levelCleared = false;          // just cleared current level, showing transition
+    let gameWin = false;
+    let levelCleared = false;
+
+    // Active power-up timers
+    let activePowerUps = {
+      expand: 0,     // frames remaining
+      shrink: 0,
+      slow: 0,
+      sticky: 0
+    };
+
+    // Falling power-up capsules
+    let powerUps = [];
+
+    // Particles (visual feedback)
+    let particles = [];
 
     // Touch state
     let paddleTargetX = null;
@@ -278,11 +224,10 @@
     const TAP_MAX_DIST = 12;
     const TAP_MAX_TIME = 250;
 
-    // Level transition timer
     let levelTransitionTimer = 0;
-    const LEVEL_TRANSITION_DURATION = 90; // frames (~1.5s at 60fps)
+    const LEVEL_TRANSITION_DURATION = 90;
 
-    // ---------- LEVEL LOADING ----------
+    // ---------- LEVELS ----------
     function loadLevel(index) {
       const pattern = LEVELS[index % LEVELS.length];
       bricks = [];
@@ -296,17 +241,24 @@
     }
 
     function resetBallAndPaddle() {
-      paddleX = (CW - PADDLE_WIDTH) / 2;
-      ballX = paddleX + PADDLE_WIDTH / 2;
+      paddleWidth = PADDLE_WIDTH;
+      paddleX = (CW - paddleWidth) / 2;
+      ballX = paddleX + paddleWidth / 2;
       ballY = PADDLE_Y - BALL_RADIUS - 1;
       ballDX = 0;
       ballDY = 0;
       ballActive = false;
+      extraBalls = [];
+      powerUps = [];
+      // Clear timed power-ups
+      activePowerUps.expand = 0;
+      activePowerUps.shrink = 0;
+      activePowerUps.slow = 0;
+      activePowerUps.sticky = 0;
       paddleTargetX = null;
       touchActive = false;
     }
 
-    // Start a brand new game (level 1)
     function resetGame() {
       score = 0;
       lives = 3;
@@ -315,18 +267,18 @@
       gameWin = false;
       levelCleared = false;
       levelTransitionTimer = 0;
+      particles = [];
       loadLevel(levelIndex);
       resetBallAndPaddle();
       updateUI();
     }
 
-    // Advance to next level (keeping score/lives)
     function advanceLevel() {
       levelIndex++;
       if (levelIndex >= LEVELS.length) {
-        // Looped back to start — you beat every level!
         gameWin = true;
         ballActive = false;
+        extraBalls = [];
         return;
       }
       loadLevel(levelIndex);
@@ -340,6 +292,84 @@
       scoreSpan.textContent = score;
       livesSpan.textContent = lives;
       levelSpan.textContent = (levelIndex % LEVELS.length) + 1;
+    }
+
+    // ---------- PARTICLES ----------
+    function spawnBurst(x, y, color, count = 10) {
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 1 + Math.random() * 3.5;
+        particles.push({
+          x, y,
+          dx: Math.cos(a) * sp,
+          dy: Math.sin(a) * sp,
+          life: 1,
+          color
+        });
+      }
+    }
+
+    function updateParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.dx;
+        p.y += p.dy;
+        p.dy += 0.05;
+        p.life -= 0.02;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+    }
+
+    // ---------- POWER-UP DROPS ----------
+    function tryDropPowerUp(x, y) {
+      if (Math.random() > POWERUP_CHANCE) return;
+      const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+      powerUps.push({
+        x,
+        y,
+        type: type.id,
+        color: type.color,
+        letter: type.letter
+      });
+    }
+
+    function applyPowerUp(type) {
+      const idx = type.id;
+      if (idx === 'expand') {
+        paddleWidth = PADDLE_WIDTH + PADDLE_WIDE_EXTRA;
+        activePowerUps.expand = POWERUP_DURATION;
+        activePowerUps.shrink = 0;       // cancel opposite
+        // keep paddle in bounds
+        paddleX = Math.min(paddleX, CW - paddleWidth);
+      } else if (idx === 'shrink') {
+        paddleWidth = Math.max(50, PADDLE_WIDTH - PADDLE_NARROW_LOSS);
+        activePowerUps.shrink = POWERUP_DURATION;
+        activePowerUps.expand = 0;
+        paddleX = Math.min(paddleX, CW - paddleWidth);
+      } else if (idx === 'multi') {
+        // spawn 2 extra balls from current ball position
+        if (ballActive) {
+          for (let i = 0; i < 2; i++) {
+            const a = Math.random() * Math.PI * 2;
+            extraBalls.push({
+              x: ballX, y: ballY,
+              dx: Math.cos(a) * MULTIBALL_SPEED,
+              dy: Math.sin(a) * MULTIBALL_SPEED
+            });
+          }
+        }
+      } else if (idx === 'slow') {
+        activePowerUps.slow = POWERUP_DURATION;
+        // scale down ball velocities (main + extras)
+        ballDX *= 0.65; ballDY *= 0.65;
+        for (const b of extraBalls) { b.dx *= 0.65; b.dy *= 0.65; }
+      } else if (idx === 'extra') {
+        lives++;
+        updateUI();
+      } else if (idx === 'sticky') {
+        activePowerUps.sticky = POWERUP_DURATION;
+      }
+      spawnBurst(paddleX + paddleWidth / 2, PADDLE_Y, type.color, 16);
     }
 
     // ---------- LAUNCH ----------
@@ -359,121 +389,356 @@
     }
 
     // ---------- BRICK COLLISION ----------
-    function ballBrickCollision() {
+    // Returns true if the ball hit a brick (used to stop after one collision per frame).
+    function ballBrickCollision(ball) {
       for (let r = 0; r < BRICK_ROWS; r++) {
         for (let c = 0; c < BRICK_COLS; c++) {
           if (bricks[r][c] === 0) continue;
-
           const brickX = BRICK_OFFSET_X + c * (BRICK_WIDTH + BRICK_PADDING);
           const brickY = BRICK_OFFSET_Y + r * (BRICK_HEIGHT + BRICK_PADDING);
-
-          const closestX = Math.max(brickX, Math.min(ballX, brickX + BRICK_WIDTH));
-          const closestY = Math.max(brickY, Math.min(ballY, brickY + BRICK_HEIGHT));
-          const dx = ballX - closestX;
-          const dy = ballY - closestY;
-          const distSq = dx * dx + dy * dy;
-
-          if (distSq < BALL_RADIUS * BALL_RADIUS) {
+          const closestX = Math.max(brickX, Math.min(ball.x, brickX + BRICK_WIDTH));
+          const closestY = Math.max(brickY, Math.min(ball.y, brickY + BRICK_HEIGHT));
+          const dx = ball.x - closestX;
+          const dy = ball.y - closestY;
+          if (dx * dx + dy * dy < BALL_RADIUS * BALL_RADIUS) {
             bricks[r][c] = 0;
             score += 10;
             updateUI();
+            spawnBurst(closestX, closestY, `hsl(${(r * 22 + levelIndex * 37 + 180) % 360}, 70%, 60%)`, 8);
+            tryDropPowerUp(brickX + BRICK_WIDTH / 2, brickY + BRICK_HEIGHT / 2);
 
-            const oL = (ballX + BALL_RADIUS) - brickX;
-            const oR = (brickX + BRICK_WIDTH) - (ballX - BALL_RADIUS);
-            const oT = (ballY + BALL_RADIUS) - brickY;
-            const oB = (brickY + BRICK_HEIGHT) - (ballY - BALL_RADIUS);
+            const oL = (ball.x + BALL_RADIUS) - brickX;
+            const oR = (brickX + BRICK_WIDTH) - (ball.x - BALL_RADIUS);
+            const oT = (ball.y + BALL_RADIUS) - brickY;
+            const oB = (brickY + BRICK_HEIGHT) - (ball.y - BALL_RADIUS);
             const minX = Math.min(oL, oR);
             const minY = Math.min(oT, oB);
 
             if (minX < minY) {
-              ballDX = -ballDX;
-              if (oL < oR) ballX = brickX - BALL_RADIUS - 0.1;
-              else ballX = brickX + BRICK_WIDTH + BALL_RADIUS + 0.1;
+              ball.dx = -ball.dx;
+              if (oL < oR) ball.x = brickX - BALL_RADIUS - 0.1;
+              else ball.x = brickX + BRICK_WIDTH + BALL_RADIUS + 0.1;
             } else {
-              ballDY = -ballDY;
-              if (oT < oB) ballY = brickY - BALL_RADIUS - 0.1;
-              else ballY = brickY + BRICK_HEIGHT + BALL_RADIUS + 0.1;
+              ball.dy = -ball.dy;
+              if (oT < oB) ball.y = brickY - BALL_RADIUS - 0.1;
+              else ball.y = brickY + BRICK_HEIGHT + BALL_RADIUS + 0.1;
             }
 
-            // Check level cleared (any brick still alive?)
+            // Level cleared check
             const anyLeft = bricks.some(row => row.some(cell => cell === 1));
             if (!anyLeft) {
               levelCleared = true;
               ballActive = false;
+              extraBalls = [];
               levelTransitionTimer = LEVEL_TRANSITION_DURATION;
             }
-            return;
+            return true;
           }
         }
       }
+      return false;
     }
 
     // ---------- UPDATE ----------
     function update() {
-      // level transition (after clearing a level)
+      // Particle updates happen even during transitions
+      updateParticles();
+
+      // Level transition
       if (levelCleared) {
-        if (levelTransitionTimer > 0) {
-          levelTransitionTimer--;
-        } else {
-          advanceLevel();
-        }
+        // Still let power-ups fall and particles animate
+        updatePowerUps();
+        if (levelTransitionTimer > 0) levelTransitionTimer--;
+        else advanceLevel();
         return;
       }
 
-      if (gameOver || gameWin) return;
+      if (gameOver || gameWin) {
+        updatePowerUps();
+        return;
+      }
 
-      // Paddle movement
+      // ---- Power-up timers ----
+      for (const k in activePowerUps) {
+        if (activePowerUps[k] > 0) activePowerUps[k]--;
+        if (activePowerUps[k] === 0) {
+          if (k === 'expand' || k === 'shrink') {
+            // revert paddle width
+            const center = paddleX + paddleWidth / 2;
+            paddleWidth = PADDLE_WIDTH;
+            paddleX = Math.max(0, Math.min(CW - paddleWidth, center - paddleWidth / 2));
+          }
+          if (k === 'slow') {
+            // restore speed
+            const restore = (b) => {
+              const len = Math.hypot(b.dx, b.dy);
+              if (len > 0) { b.dx = b.dx / len * BALL_SPEED; b.dy = b.dy / len * BALL_SPEED; }
+            };
+            restore({ dx: ballDX, dy: ballDY }); // doesn't mutate real ball; do it manually below
+            const normalize = (vx, vy) => {
+              const len = Math.hypot(vx, vy);
+              if (len === 0) return [0, 0];
+              return [vx / len * BALL_SPEED, vy / len * BALL_SPEED];
+            };
+            [ballDX, ballDY] = normalize(ballDX, ballDY);
+            for (const b of extraBalls) {
+              [b.dx, b.dy] = normalize(b.dx, b.dy);
+            }
+          }
+        }
+      }
+
+      // ---- Paddle movement ----
       if (paddleTargetX !== null) {
-        const desired = paddleTargetX - PADDLE_WIDTH / 2;
-        const clamped = Math.max(0, Math.min(CW - PADDLE_WIDTH, desired));
+        const desired = paddleTargetX - paddleWidth / 2;
+        const clamped = Math.max(0, Math.min(CW - paddleWidth, desired));
         const diff = clamped - paddleX;
         if (Math.abs(diff) < 0.5) paddleX = clamped;
         else paddleX += diff * 0.45;
       } else {
         if (leftPressed) paddleX = Math.max(0, paddleX - PADDLE_SPEED);
-        if (rightPressed) paddleX = Math.min(CW - PADDLE_WIDTH, paddleX + PADDLE_SPEED);
+        if (rightPressed) paddleX = Math.min(CW - paddleWidth, paddleX + PADDLE_SPEED);
       }
 
+      // ---- Update falling power-ups ----
+      updatePowerUps();
+
+      // ---- Ball(s) ----
       if (!ballActive) {
-        ballX = paddleX + PADDLE_WIDTH / 2;
+        ballX = paddleX + paddleWidth / 2;
         ballY = PADDLE_Y - BALL_RADIUS - 1;
+        // Extra balls shouldn't exist if main is inactive; clear just in case
+        extraBalls = [];
         return;
       }
 
-      ballX += ballDX;
-      ballY += ballDY;
+      // Main ball
+      moveBall(ballX, ballY, ballDX, ballDY, true);
+      // The moveBall function returns new state; let's handle main + extras with a unified pass.
+      // Simpler: rewrite inline below.
 
-      if (ballX - BALL_RADIUS < 0) { ballX = BALL_RADIUS; ballDX = -ballDX; }
-      else if (ballX + BALL_RADIUS > CW) { ballX = CW - BALL_RADIUS; ballDX = -ballDX; }
-      if (ballY - BALL_RADIUS < 0) { ballY = BALL_RADIUS; ballDY = -ballDY; }
-
-      if (ballDY > 0 &&
-          ballY + BALL_RADIUS >= PADDLE_Y &&
-          ballY - BALL_RADIUS <= PADDLE_Y + PADDLE_HEIGHT &&
-          ballX + BALL_RADIUS >= paddleX &&
-          ballX - BALL_RADIUS <= paddleX + PADDLE_WIDTH) {
-        ballDY = -ballDY;
-        const hitPos = (ballX - paddleX) / PADDLE_WIDTH;
-        const angle = (hitPos - 0.5) * 1.6;
-        const speed = Math.hypot(ballDX, ballDY);
-        ballDX = Math.sin(angle) * speed;
-        ballDY = -Math.abs(Math.cos(angle)) * speed;
-        ballY = PADDLE_Y - BALL_RADIUS - 0.5;
+      // Actually, do the unified step now:
+      stepBall(mainBallProxy(), true);
+      for (let i = extraBalls.length - 1; i >= 0; i--) {
+        const before = extraBalls.length;
+        stepBall(extraBalls[i], false);
+        if (extraBalls.length < before) {
+          // ball was lost
+          continue;
+        }
       }
 
-      ballBrickCollision();
+      // Re-sync main ball state from proxy
+      ballX = mainBall.x;
+      ballY = mainBall.y;
+      ballDX = mainBall.dx;
+      ballDY = mainBall.dy;
 
+      // Bottom: check main ball loss
       if (ballY - BALL_RADIUS > CH) {
-        lives--;
-        updateUI();
-        if (lives <= 0) {
-          gameOver = true;
-          ballActive = false;
-          ballX = paddleX + PADDLE_WIDTH / 2;
-          ballY = PADDLE_Y - BALL_RADIUS - 1;
-          ballDX = 0; ballDY = 0;
+        // If extra balls exist, promote one to main
+        if (extraBalls.length > 0) {
+          const b = extraBalls.shift();
+          ballX = b.x; ballY = b.y; ballDX = b.dx; ballDY = b.dy;
+          mainBall.x = ballX; mainBall.y = ballY; mainBall.dx = ballDX; mainBall.dy = ballDY;
         } else {
-          resetBallAndPaddle();
+          // Lose a life
+          lives--;
+          updateUI();
+          if (lives <= 0) {
+            gameOver = true;
+            ballActive = false;
+            ballX = paddleX + paddleWidth / 2;
+            ballY = PADDLE_Y - BALL_RADIUS - 1;
+            ballDX = 0; ballDY = 0;
+            extraBalls = [];
+            powerUps = [];
+          } else {
+            resetBallAndPaddle();
+          }
+        }
+      }
+    }
+
+    // Hmm, let me restructure: this got messy with proxies. Let me use a cleaner approach.
+    // (Rewrite below — I'll replace the update body.)
+
+    // ---------- CLEANER BALL PHYSICS ----------
+    // We keep the main ball in ballX/ballY/ballDX/ballDY and extraBalls as objects.
+    // stepBallState(b) mutates b in place. Returns 'lost' if it went off the bottom.
+    function stepBallState(b, isMain) {
+      b.x += b.dx;
+      b.y += b.dy;
+
+      // walls
+      if (b.x - BALL_RADIUS < 0) { b.x = BALL_RADIUS; b.dx = -b.dx; }
+      else if (b.x + BALL_RADIUS > CW) { b.x = CW - BALL_RADIUS; b.dx = -b.dx; }
+      if (b.y - BALL_RADIUS < 0) { b.y = BALL_RADIUS; b.dy = -b.dy; }
+
+      // paddle
+      if (b.dy > 0 &&
+          b.y + BALL_RADIUS >= PADDLE_Y &&
+          b.y - BALL_RADIUS <= PADDLE_Y + PADDLE_HEIGHT &&
+          b.x + BALL_RADIUS >= paddleX &&
+          b.x - BALL_RADIUS <= paddleX + paddleWidth) {
+        b.dy = -b.dy;
+        const hitPos = (b.x - paddleX) / paddleWidth;
+        const angle = (hitPos - 0.5) * 1.6;
+        const speed = Math.hypot(b.dx, b.dy);
+        b.dx = Math.sin(angle) * speed;
+        b.dy = -Math.abs(Math.cos(angle)) * speed;
+        b.y = PADDLE_Y - BALL_RADIUS - 0.5;
+
+        // Sticky power-up: stop ball on paddle
+        if (activePowerUps.sticky > 0 && isMain) {
+          // Main ball becomes inactive (sticks); we can absorb extras? keep simple
+          // We'll handle stickiness by zeroing dx/dy and marking ballActive=false after loop
+          b.dx = 0; b.dy = 0;
+          b.x = paddleX + paddleWidth / 2;
+          b.y = PADDLE_Y - BALL_RADIUS - 1;
+          b.stuck = true;
+        }
+      }
+
+      // bricks
+      if (ballBrickCollision(b)) {
+        // handled; one collision per frame per ball
+      }
+
+      // bottom
+      if (b.y - BALL_RADIUS > CH) return 'lost';
+      return 'ok';
+    }
+
+    // ---------- REVISED UPDATE ----------
+    // Replace the update function entirely for clarity.
+    update = function() {
+      updateParticles();
+
+      if (levelCleared) {
+        updatePowerUps();
+        if (levelTransitionTimer > 0) levelTransitionTimer--;
+        else advanceLevel();
+        return;
+      }
+      if (gameOver || gameWin) {
+        updatePowerUps();
+        return;
+      }
+
+      // Power-up timers
+      for (const k in activePowerUps) {
+        if (activePowerUps[k] > 0) activePowerUps[k]--;
+        if (activePowerUps[k] === 0) {
+          if (k === 'expand' || k === 'shrink') {
+            const center = paddleX + paddleWidth / 2;
+            paddleWidth = PADDLE_WIDTH;
+            paddleX = Math.max(0, Math.min(CW - paddleWidth, center - paddleWidth / 2));
+          }
+          if (k === 'slow') {
+            const norm = (vx, vy) => {
+              const len = Math.hypot(vx, vy);
+              if (len === 0) return [0, 0];
+              return [vx / len * BALL_SPEED, vy / len * BALL_SPEED];
+            };
+            [ballDX, ballDY] = norm(ballDX, ballDY);
+            for (const b of extraBalls) {
+              [b.dx, b.dy] = norm(b.dx, b.dy);
+            }
+          }
+        }
+      }
+
+      // Paddle
+      if (paddleTargetX !== null) {
+        const desired = paddleTargetX - paddleWidth / 2;
+        const clamped = Math.max(0, Math.min(CW - paddleWidth, desired));
+        const diff = clamped - paddleX;
+        if (Math.abs(diff) < 0.5) paddleX = clamped;
+        else paddleX += diff * 0.45;
+      } else {
+        if (leftPressed) paddleX = Math.max(0, paddleX - PADDLE_SPEED);
+        if (rightPressed) paddleX = Math.min(CW - paddleWidth, paddleX + PADDLE_SPEED);
+      }
+
+      updatePowerUps();
+
+      if (!ballActive) {
+        ballX = paddleX + paddleWidth / 2;
+        ballY = PADDLE_Y - BALL_RADIUS - 1;
+        extraBalls = [];
+        return;
+      }
+
+      // Step main ball
+      const main = { x: ballX, y: ballY, dx: ballDX, dy: ballDY };
+      // If sticky and stuck, skip physics
+      if (main.dy === 0 && main.dx === 0 && activePowerUps.sticky > 0) {
+        main.x = paddleX + paddleWidth / 2;
+        main.y = PADDLE_Y - BALL_RADIUS - 1;
+        // Check if player launched (tap/space) — handled elsewhere by launchBall
+        // If they launched, ballActive is still true but dx/dy zero.
+        // We'll treat zero-velocity as "stuck"; launchBall will re-enable physics.
+        ballX = main.x; ballY = main.y;
+        // Also step extras independently
+      } else {
+        const res = stepBallState(main, true);
+        ballX = main.x; ballY = main.y; ballDX = main.dx; ballDY = main.dy;
+        if (res === 'lost') {
+          // promote an extra ball if available
+          if (extraBalls.length > 0) {
+            const e = extraBalls.shift();
+            ballX = e.x; ballY = e.y; ballDX = e.dx; ballDY = e.dy;
+          } else {
+            lives--;
+            updateUI();
+            if (lives <= 0) {
+              gameOver = true; ballActive = false;
+              ballX = paddleX + paddleWidth / 2;
+              ballY = PADDLE_Y - BALL_RADIUS - 1;
+              ballDX = 0; ballDY = 0; extraBalls = [];
+            } else {
+              resetBallAndPaddle();
+            }
+            return;
+          }
+        }
+      }
+
+      // Step extra balls
+      for (let i = extraBalls.length - 1; i >= 0; i--) {
+        const e = extraBalls[i];
+        const res = stepBallState(e, false);
+        if (res === 'lost') {
+          extraBalls.splice(i, 1);
+        }
+      }
+
+      // If sticky and ball is at rest on paddle, sync position
+      if (activePowerUps.sticky > 0 && ballDX === 0 && ballDY === 0) {
+        ballX = paddleX + paddleWidth / 2;
+        ballY = PADDLE_Y - BALL_RADIUS - 1;
+      }
+    };
+
+    // ---------- POWER-UP UPDATER ----------
+    function updatePowerUps() {
+      for (let i = powerUps.length - 1; i >= 0; i--) {
+        const pu = powerUps[i];
+        pu.y += POWERUP_FALL_SPEED;
+
+        // Catch by paddle?
+        if (pu.y + POWERUP_SIZE / 2 >= PADDLE_Y &&
+            pu.y - POWERUP_SIZE / 2 <= PADDLE_Y + PADDLE_HEIGHT &&
+            pu.x + POWERUP_SIZE / 2 >= paddleX &&
+            pu.x - POWERUP_SIZE / 2 <= paddleX + paddleWidth) {
+          applyPowerUp(pu);
+          powerUps.splice(i, 1);
+          continue;
+        }
+        // Off screen
+        if (pu.y - POWERUP_SIZE > CH) {
+          powerUps.splice(i, 1);
         }
       }
     }
@@ -520,20 +785,64 @@
       ctx.shadowBlur = 0;
       ctx.shadowColor = 'transparent';
 
+      // particles
+      for (const p of particles) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // power-ups
+      for (const pu of powerUps) {
+        ctx.shadowColor = pu.color;
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = pu.color;
+        ctx.beginPath();
+        ctx.roundRect(pu.x - POWERUP_SIZE / 2, pu.y - POWERUP_SIZE / 2,
+                      POWERUP_SIZE, POWERUP_SIZE, 8);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#00000099';
+        ctx.font = 'bold 16px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(pu.letter, pu.x, pu.y + 1);
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+
       // paddle
       ctx.shadowColor = '#b0c8ff';
       ctx.shadowBlur = 16;
       ctx.fillStyle = '#b7d0ff';
       ctx.beginPath();
-      ctx.roundRect(paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, 12);
+      ctx.roundRect(paddleX, PADDLE_Y, paddleWidth, PADDLE_HEIGHT, 12);
       ctx.fill();
       ctx.shadowBlur = 0;
       ctx.fillStyle = '#e4eeff';
       ctx.beginPath();
-      ctx.roundRect(paddleX + 4, PADDLE_Y + 2, PADDLE_WIDTH - 8, 6, 6);
+      ctx.roundRect(paddleX + 4, PADDLE_Y + 2, paddleWidth - 8, 6, 6);
       ctx.fill();
 
-      // ball
+      // extra balls
+      for (const b of extraBalls) {
+        ctx.shadowColor = '#fff9c4';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = '#fff9e6';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, BALL_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = '#ffe066';
+        ctx.beginPath();
+        ctx.arc(b.x - 2, b.y - 2, BALL_RADIUS - 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // main ball
       ctx.shadowColor = '#fff9c4';
       ctx.shadowBlur = 24;
       ctx.fillStyle = '#fff9e6';
@@ -546,6 +855,9 @@
       ctx.arc(ballX - 2, ballY - 2, BALL_RADIUS - 2, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
+
+      // Active power-up indicators (top-right pills)
+      drawActivePowerUps();
 
       // messages
       ctx.textAlign = 'center';
@@ -592,7 +904,37 @@
       ctx.textAlign = 'left';
     }
 
-    // ---------- ROUND RECT POLYFILL ----------
+    function drawActivePowerUps() {
+      const items = [];
+      if (activePowerUps.expand > 0) items.push({ color: '#4ade80', label: 'WIDE', t: activePowerUps.expand });
+      if (activePowerUps.shrink > 0) items.push({ color: '#f87171', label: 'NARROW', t: activePowerUps.shrink });
+      if (activePowerUps.slow > 0)   items.push({ color: '#a78bfa', label: 'SLOW', t: activePowerUps.slow });
+      if (activePowerUps.sticky > 0) items.push({ color: '#f472b6', label: 'STICKY', t: activePowerUps.sticky });
+
+      let y = 12;
+      for (const it of items) {
+        const secs = Math.ceil(it.t / 60);
+        const text = `${it.label} ${secs}s`;
+        ctx.font = 'bold 13px monospace';
+        const w = ctx.measureText(text).width + 20;
+        ctx.fillStyle = it.color + '33';
+        ctx.strokeStyle = it.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(CW - w - 14, y, w, 24, 12);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = it.color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, CW - w / 2 - 14, y + 12);
+        y += 30;
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    // ---------- ROUND RECT ----------
     if (!CanvasRenderingContext2D.prototype.roundRect) {
       CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
@@ -618,15 +960,12 @@
       requestAnimationFrame(gameLoop);
     }
 
-    // ---------- COORDINATE HELPER ----------
+    // ---------- COORD ----------
     function clientToCanvas(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
       const scaleX = CW / rect.width;
       const scaleY = CH / rect.height;
-      return {
-        x: (clientX - rect.left) * scaleX,
-        y: (clientY - rect.top) * scaleY
-      };
+      return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
     }
 
     // ---------- TOUCH ----------
@@ -660,6 +999,10 @@
       if (wasTap) {
         if (gameOver || gameWin) fullRestart();
         else if (!ballActive && !levelCleared) launchBall();
+        else if (ballActive && ballDX === 0 && ballDY === 0 && activePowerUps.sticky > 0) {
+          // launch stuck ball
+          launchBall();
+        }
       }
     }
     function onTouchCancel() {
@@ -672,7 +1015,7 @@
     canvas.addEventListener('touchend', onTouchEnd, { passive: false });
     canvas.addEventListener('touchcancel', onTouchCancel, { passive: false });
 
-    // mouse (desktop convenience)
+    // mouse
     let mouseDown = false;
     canvas.addEventListener('mousedown', (e) => {
       mouseDown = true;
@@ -699,6 +1042,9 @@
       if (wasTap) {
         if (gameOver || gameWin) fullRestart();
         else if (!ballActive && !levelCleared) launchBall();
+        else if (ballActive && ballDX === 0 && ballDY === 0 && activePowerUps.sticky > 0) {
+          launchBall();
+        }
       }
     });
 
@@ -706,19 +1052,15 @@
     function handleKeyDown(e) {
       const key = e.key;
       if (key === 'ArrowLeft' || key === 'Left' || key === 'a' || key === 'A') {
-        leftPressed = true;
-        paddleTargetX = null; touchActive = false;
-        e.preventDefault();
+        leftPressed = true; paddleTargetX = null; touchActive = false; e.preventDefault();
       } else if (key === 'ArrowRight' || key === 'Right' || key === 'd' || key === 'D') {
-        rightPressed = true;
-        paddleTargetX = null; touchActive = false;
-        e.preventDefault();
+        rightPressed = true; paddleTargetX = null; touchActive = false; e.preventDefault();
       } else if (key === ' ') {
         if (!ballActive && !gameOver && !gameWin && !levelCleared) launchBall();
+        else if (ballActive && ballDX === 0 && ballDY === 0 && activePowerUps.sticky > 0) launchBall();
         e.preventDefault();
       } else if (key === 'r' || key === 'R') {
-        fullRestart();
-        e.preventDefault();
+        fullRestart(); e.preventDefault();
       }
     }
     function handleKeyUp(e) {
