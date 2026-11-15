@@ -784,8 +784,6 @@ let audioCtx = null;
 let musicBuffer = null;
 let musicSource = null;
 let musicStarted = false;
-let musicLoading = false;
-let userInteracted = false;
 let musicMuted = localStorage.getItem('breakout_music_muted') === '1';
 
 const musicToggleBtn = document.getElementById('musicToggle');
@@ -796,64 +794,55 @@ function updateMusicButton() {
   musicToggleBtn.classList.toggle('muted', musicMuted);
 }
 
-// --- Load file WITHOUT creating AudioContext ---
-if (!musicLoading) {
-  musicLoading = true;
-  fetch('bckgdmus.mp3')
-    .then(res => {
-      if (!res.ok) throw new Error('music file not found: ' + res.status);
-      return res.arrayBuffer();
-    })
-    .then(data => {
-      // Use OfflineAudioContext — doesn't trigger autoplay policy
-      const offline = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100);
-      return offline.decodeAudioData(data);
-    })
-    .then(buffer => {
-      musicBuffer = buffer;
-      // If user already tapped, try starting now.
-      // But DO NOT auto-start from here on mobile — just store it.
-      // Next tap will call startMusicOnce() naturally.
-    })
-    .catch(err => console.warn('Music load failed:', err));
-}
+// --- Load with OfflineAudioContext (no autoplay warning) ---
+fetch('bckgdmus.mp3')
+  .then(res => {
+    if (!res.ok) throw new Error('music file not found: ' + res.status);
+    return res.arrayBuffer();
+  })
+  .then(data => {
+    const offline = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100);
+    return offline.decodeAudioData(data);
+  })
+  .then(buffer => {
+    musicBuffer = buffer;
+    console.log('[music] buffer loaded, size:', buffer.duration.toFixed(1) + 's');
+  })
+  .catch(err => console.warn('[music] load failed:', err));
 
-// --- This MUST be called synchronously inside a real user gesture ---
+// --- Start music. Called ONLY from a real user gesture. ---
 function startMusicOnce() {
-  userInteracted = true;
-
-  // If already started, nothing to do
   if (musicStarted) return;
-
-  // If buffer not loaded yet, do nothing — next tap will retry
-  if (!musicBuffer) return;
+  if (!musicBuffer) {
+    console.log('[music] not ready yet, waiting for buffer...');
+    return;
+  }
 
   try {
-    // Create context ONLY inside gesture
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      console.log('[music] audioCtx created, state:', audioCtx.state);
     }
 
-    // resume() must be synchronous
     if (audioCtx.state === 'suspended') {
       audioCtx.resume();
     }
 
-    // Create and start source
+    musicStarted = true;
     musicSource = audioCtx.createBufferSource();
     musicSource.buffer = musicBuffer;
     musicSource.loop = true;
     musicSource.connect(audioCtx.destination);
     musicSource.start();
+    console.log('[music] playing, ctx state:', audioCtx.state);
 
-    musicStarted = true;
-
-    // If user previously muted, suspend after starting
     if (musicMuted) {
-      audioCtx.suspend();
+      setTimeout(() => {
+        if (audioCtx.state === 'running') audioCtx.suspend();
+      }, 50);
     }
   } catch (err) {
-    console.warn('Music start failed:', err);
+    console.warn('[music] start failed:', err);
   }
 }
 
@@ -863,7 +852,6 @@ function toggleMusic() {
   updateMusicButton();
 
   if (!audioCtx || !musicStarted) return;
-
   if (musicMuted) {
     if (audioCtx.state === 'running') audioCtx.suspend();
   } else {
@@ -879,12 +867,11 @@ if (musicToggleBtn) {
 }
 updateMusicButton();
 
-// --- Gesture listeners: call startMusicOnce() directly, NOT as reference ---
-document.addEventListener('touchstart', () => { startMusicOnce(); }, { passive: true });
-document.addEventListener('touchend',   () => { startMusicOnce(); }, { passive: true });
-document.addEventListener('mousedown',  () => { startMusicOnce(); }, { passive: true });
-document.addEventListener('click',      () => { startMusicOnce(); }, { passive: true });
-document.addEventListener('keydown',    () => { startMusicOnce(); }, { passive: true });
+// ===== Gesture unlock — PC-friendly =====
+// Every one of these fires reliably on desktop.
+['click', 'mousedown', 'keydown', 'touchstart', 'touchend', 'pointerdown'].forEach(evt => {
+  document.addEventListener(evt, startMusicOnce, { passive: true });
+});
 
     // ================= START =================
     resetGame();
