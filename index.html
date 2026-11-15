@@ -62,6 +62,7 @@
     <div class="lives">❤️ <span id="livesDisplay">3</span></div>
     <div class="level">📁 <span id="levelDisplay">1</span></div>
     <button class="restart-btn" id="restartButton">↻</button>
+    <button class="restart-btn" id="musicToggle" title="Toggle music">🎵</button>
   </div>
   <div class="hint">drag to move · tap to launch · ⌨️ ← → / space · R restart</div>
 </div>
@@ -778,32 +779,96 @@ createBufferSource();b.buffer=p;b.connect(X.destination);b.start()}
 
     document.getElementById('restartButton').addEventListener('click', resetGame);
 
-        // ================= BACKGROUND MUSIC =================
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    let musicBuffer = null;
-    let musicSource = null;
-    let musicStarted = false;
+// ================= BACKGROUND MUSIC =================
+let audioCtx = null;
+let musicBuffer = null;
+let musicSource = null;
+let musicStarted = false;
+let musicLoading = false;
+let userInteracted = false;
+let musicMuted = localStorage.getItem('breakout_music_muted') === '1';
 
-    // Load the file (doesn't play yet — browsers block that)
-    fetch('bckgdmus.mp3')
-      .then(res => {
-        if (!res.ok) throw new Error('music file not found: ' + res.status);
-        return res.arrayBuffer();
-      })
-      .then(data => audioCtx.decodeAudioData(data))
-      .then(buffer => { musicBuffer = buffer; })
-      .catch(err => console.warn('Music load failed:', err));
+const musicToggleBtn = document.getElementById('musicToggle');
 
-    function startMusicOnce() {
-      if (musicStarted || !musicBuffer) return;   // wait until loaded
-      musicStarted = true;
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      musicSource = audioCtx.createBufferSource();
-      musicSource.buffer = musicBuffer;
-      musicSource.loop = true;
-      musicSource.connect(audioCtx.destination);
-      musicSource.start();
+function updateMusicButton() {
+  if (!musicToggleBtn) return;
+  musicToggleBtn.textContent = musicMuted ? '🔇' : '🎵';
+  musicToggleBtn.classList.toggle('muted', musicMuted);
+}
+
+if (!musicLoading) {
+  musicLoading = true;
+  fetch('bckgdmus.mp3')
+    .then(res => {
+      if (!res.ok) throw new Error('music file not found: ' + res.status);
+      return res.arrayBuffer();
+    })
+    .then(data => {
+      const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return tempCtx.decodeAudioData(data);
+    })
+    .then(buffer => {
+      musicBuffer = buffer;
+      if (userInteracted) startMusicOnce();   // retry if gesture came first
+    })
+    .catch(err => console.warn('Music load failed:', err));
+}
+
+function startMusicOnce() {
+  userInteracted = true;
+  if (musicStarted) return;
+  if (!musicBuffer) return;
+
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    musicStarted = true;
+    musicSource = audioCtx.createBufferSource();
+    musicSource.buffer = musicBuffer;
+    musicSource.loop = true;
+    musicSource.connect(audioCtx.destination);
+    musicSource.start();
+
+    if (musicMuted) {
+      // give the context a tick to actually start, then suspend
+      setTimeout(() => { if (audioCtx.state === 'running') audioCtx.suspend(); }, 0);
+    }
+  } catch (err) {
+    console.warn('Music start failed:', err);
+  }
+}
+
+function toggleMusic() {
+  musicMuted = !musicMuted;
+  localStorage.setItem('breakout_music_muted', musicMuted ? '1' : '0');
+  updateMusicButton();
+
+  if (!audioCtx || !musicStarted) {
+    // If music hasn't started yet, make sure the next gesture will start it
+    return;
+  }
+  if (musicMuted) {
+    if (audioCtx.state === 'running') audioCtx.suspend();
+  } else {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+}
+
+if (musicToggleBtn) {
+  musicToggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMusic();
+  });
+}
+updateMusicButton();
+
+// ---- Gesture unlock listeners (call startMusicOnce on ALL of these) ----
+['touchstart', 'touchend', 'mousedown', 'click', 'keydown'].forEach(evt => {
+  document.addEventListener(evt, startMusicOnce, { passive: true, once: false });
+});
 
     // ================= START =================
     resetGame();
